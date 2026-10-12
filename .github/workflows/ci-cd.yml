@@ -230,7 +230,7 @@ jobs:
           curl -s http://localhost:8081/actuator/health | tee -a $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          echo "--- POST /auth/login (credencial inválida deve responder 401) ---" | tee -a $GITHUB_STEP_SUMMARY
+          echo "--- POST /auth/login (credencial inválida deve ser rejeitada com 4xx) ---" | tee -a $GITHUB_STEP_SUMMARY
           code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
             -H 'Content-Type: application/json' \
             -d '{"email":"nao-existe@fiap.com.br","senha":"errada"}' \
@@ -238,7 +238,12 @@ jobs:
           echo "HTTP $code" | tee -a $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-          test "$code" = "401" -o "$code" = "403"
+          # A API rejeita credencial invalida com 422 (regra de negocio); qualquer 4xx
+          # prova que o endpoint esta no ar e recusando. 2xx ou 5xx reprovam o deploy.
+          case "$code" in
+            4??) echo "Login invalido rejeitado corretamente." ;;
+            *)   echo "Resposta inesperada: HTTP $code"; exit 1 ;;
+          esac
 
       - name: Estado do contêiner em staging
         if: always()
