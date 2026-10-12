@@ -1,0 +1,181 @@
+# ==============================================================================
+# Kubernetes — alternativa ao Docker Compose para orquestrar a aplicação.
+# Aplicar com:  kubectl apply -f k8s/mobilidade.yaml
+#
+# Traz os mesmos três elementos exigidos na atividade:
+#   volumes            -> PersistentVolumeClaim do Oracle
+#   variáveis de ambiente -> ConfigMap (não sensível) + Secret (sensível)
+#   redes              -> Services (DNS interno do cluster) + Namespace isolado
+# ==============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mobilidade
+---
+# --------------------------------------------------------------- Configuração
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mobilidade-config
+  namespace: mobilidade
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+  ORACLE_HOST: "oracle-db"
+  ORACLE_PORT: "1521"
+  ORACLE_SERVICE: "XEPDB1"
+  PORT: "8080"
+  JAVA_OPTS: "-XX:MaxRAMPercentage=75"
+---
+# Em um cluster real este Secret é criado fora do Git, por exemplo:
+#   kubectl -n mobilidade create secret generic mobilidade-secret \
+#     --from-literal=ORACLE_USER=mobilidade \
+#     --from-literal=ORACLE_PASSWORD='...' \
+#     --from-literal=JWT_SECRET="$(openssl rand -base64 48)"
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mobilidade-secret
+  namespace: mobilidade
+type: Opaque
+stringData:
+  ORACLE_USER: "mobilidade"
+  ORACLE_PASSWORD: "troque-em-producao"
+  JWT_SECRET: "troque-em-producao-por-um-segredo-de-no-minimo-256-bits-ok"
+---
+# ------------------------------------------------------------- Banco de dados
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: oracle-data
+  namespace: mobilidade
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oracle-db
+  namespace: mobilidade
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oracle-db
+  template:
+    metadata:
+      labels:
+        app: oracle-db
+    spec:
+      containers:
+        - name: oracle
+          image: gvenzl/oracle-xe:21-slim
+          ports:
+            - containerPort: 1521
+          env:
+            - name: ORACLE_PASSWORD
+              value: "Oracle123"
+            - name: APP_USER
+              valueFrom:
+                secretKeyRef: { name: mobilidade-secret, key: ORACLE_USER }
+            - name: APP_USER_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: mobilidade-secret, key: ORACLE_PASSWORD }
+          volumeMounts:
+            - name: oracle-data
+              mountPath: /opt/oracle/oradata
+          readinessProbe:
+            exec:
+              command: ["healthcheck.sh"]
+            initialDelaySeconds: 90
+            periodSeconds: 15
+            failureThreshold: 30
+      volumes:
+        - name: oracle-data
+          persistentVolumeClaim:
+            claimName: oracle-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oracle-db
+  namespace: mobilidade
+spec:
+  selector:
+    app: oracle-db
+  ports:
+    - port: 1521
+      targetPort: 1521
+---
+# ---------------------------------------------------------------- Aplicação
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mobilidade-api
+  namespace: mobilidade
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mobilidade-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: mobilidade-api
+    spec:
+      containers:
+        - name: api
+          # Imagem publicada pelo pipeline no GitHub Container Registry
+          image: ghcr.io/SEU-USUARIO/mobilidade-sustentavel:production
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: mobilidade-config
+            - secretRef:
+                name: mobilidade-secret
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mobilidade-api
+  namespace: mobilidade
+spec:
+  type: NodePort
+  selector:
+    app: mobilidade-api
+  ports:
+    - port: 80
+      targetPort: 8080
+      nodePort: 30080

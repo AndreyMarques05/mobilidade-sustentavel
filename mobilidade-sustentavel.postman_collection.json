@@ -1,0 +1,391 @@
+{
+  "info": {
+    "name": "Mobilidade Sustentável API",
+    "description": "Collection completa da API RESTful de Mobilidade Sustentável - ESG (FIAP Cap 8)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080", "type": "string" },
+    { "key": "token",   "value": "",                      "type": "string" },
+    { "key": "userId",  "value": "1",                     "type": "string" },
+    { "key": "viagemId","value": "1",                     "type": "string" },
+    { "key": "transporteId", "value": "1",                "type": "string" },
+    { "key": "recompensaId", "value": "1",                "type": "string" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "1. Autenticação",
+      "item": [
+        {
+          "name": "Login (obter token JWT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.token) {",
+                  "    pm.collectionVariables.set('token', json.token);",
+                  "    pm.collectionVariables.set('userId', json.id);",
+                  "    console.log('Token salvo automaticamente!');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@mobilidade.com\",\n  \"senha\": \"admin123\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Usuários",
+      "item": [
+        {
+          "name": "Cadastrar usuário (público)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"João Silva\",\n  \"email\": \"joao@email.com\",\n  \"senha\": \"123456\",\n  \"tipo\": \"PESSOA_FISICA\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/usuarios", "host": ["{{baseUrl}}"], "path": ["usuarios"] }
+          }
+        },
+        {
+          "name": "Cadastrar empresa",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"EcoLogística LTDA\",\n  \"email\": \"contato@ecologistica.com\",\n  \"senha\": \"empresa123\",\n  \"tipo\": \"EMPRESA\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/usuarios", "host": ["{{baseUrl}}"], "path": ["usuarios"] }
+          }
+        },
+        {
+          "name": "Listar todos os usuários (ADMIN)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/usuarios", "host": ["{{baseUrl}}"], "path": ["usuarios"] }
+          }
+        },
+        {
+          "name": "Buscar usuário por ID",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/usuarios/{{userId}}", "host": ["{{baseUrl}}"], "path": ["usuarios", "{{userId}}"] }
+          }
+        },
+        {
+          "name": "Consultar impacto ambiental do usuário",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/usuarios/{{userId}}/impacto", "host": ["{{baseUrl}}"], "path": ["usuarios", "{{userId}}", "impacto"] }
+          }
+        },
+        {
+          "name": "Ranking de sustentabilidade",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/usuarios/ranking", "host": ["{{baseUrl}}"], "path": ["usuarios", "ranking"] }
+          }
+        },
+        {
+          "name": "Resgatar recompensa (via usuário)",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/usuarios/{{userId}}/recompensas/{{recompensaId}}/resgatar", "host": ["{{baseUrl}}"], "path": ["usuarios", "{{userId}}", "recompensas", "{{recompensaId}}", "resgatar"] }
+          }
+        },
+        {
+          "name": "Desativar usuário",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/usuarios/{{userId}}", "host": ["{{baseUrl}}"], "path": ["usuarios", "{{userId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Viagens",
+      "item": [
+        {
+          "name": "Registrar nova viagem (bicicleta)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.id) { pm.collectionVariables.set('viagemId', json.id); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idTipoTransporte\": 1,\n  \"origem\": \"Av. Paulista, 1000\",\n  \"destino\": \"Parque Ibirapuera\",\n  \"distanciaKm\": 5.2,\n  \"descricao\": \"Pedalei até o parque no almoço\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/viagens/usuario/{{userId}}", "host": ["{{baseUrl}}"], "path": ["viagens", "usuario", "{{userId}}"] }
+          }
+        },
+        {
+          "name": "Registrar viagem (metrô)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idTipoTransporte\": 5,\n  \"origem\": \"Estação Sé\",\n  \"destino\": \"Estação Consolação\",\n  \"distanciaKm\": 3.8,\n  \"descricao\": \"Metrô linha 2\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/viagens/usuario/{{userId}}", "host": ["{{baseUrl}}"], "path": ["viagens", "usuario", "{{userId}}"] }
+          }
+        },
+        {
+          "name": "Registrar viagem (carro elétrico)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idTipoTransporte\": 7,\n  \"origem\": \"São Paulo - Centro\",\n  \"destino\": \"Campinas\",\n  \"distanciaKm\": 95.0,\n  \"descricao\": \"Visita a cliente com carro elétrico\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/viagens/usuario/{{userId}}", "host": ["{{baseUrl}}"], "path": ["viagens", "usuario", "{{userId}}"] }
+          }
+        },
+        {
+          "name": "Buscar viagem por ID",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/viagens/{{viagemId}}", "host": ["{{baseUrl}}"], "path": ["viagens", "{{viagemId}}"] }
+          }
+        },
+        {
+          "name": "Histórico de viagens do usuário",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/viagens/usuario/{{userId}}", "host": ["{{baseUrl}}"], "path": ["viagens", "usuario", "{{userId}}"] }
+          }
+        },
+        {
+          "name": "Atualizar viagem",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idTipoTransporte\": 1,\n  \"origem\": \"Av. Paulista, 1000\",\n  \"destino\": \"Parque Ibirapuera\",\n  \"distanciaKm\": 6.0,\n  \"descricao\": \"Distância corrigida\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/viagens/{{viagemId}}", "host": ["{{baseUrl}}"], "path": ["viagens", "{{viagemId}}"] }
+          }
+        },
+        {
+          "name": "Excluir viagem",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/viagens/{{viagemId}}", "host": ["{{baseUrl}}"], "path": ["viagens", "{{viagemId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Tipos de Transporte",
+      "item": [
+        {
+          "name": "Listar transportes ativos",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/transportes", "host": ["{{baseUrl}}"], "path": ["transportes"] }
+          }
+        },
+        {
+          "name": "Buscar transporte por ID",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/transportes/{{transporteId}}", "host": ["{{baseUrl}}"], "path": ["transportes", "{{transporteId}}"] }
+          }
+        },
+        {
+          "name": "Criar tipo de transporte (ADMIN)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.id) { pm.collectionVariables.set('transporteId', json.id); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Trotinete Elétrica\",\n  \"descricao\": \"Patinete elétrico de baixo impacto ambiental.\",\n  \"emissaoCo2PorKm\": 0.015,\n  \"pontosPorKm\": 7\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/transportes", "host": ["{{baseUrl}}"], "path": ["transportes"] }
+          }
+        },
+        {
+          "name": "Atualizar tipo de transporte (ADMIN)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Trotinete Elétrica Premium\",\n  \"descricao\": \"Versão premium do patinete elétrico.\",\n  \"emissaoCo2PorKm\": 0.012,\n  \"pontosPorKm\": 8\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/transportes/{{transporteId}}", "host": ["{{baseUrl}}"], "path": ["transportes", "{{transporteId}}"] }
+          }
+        },
+        {
+          "name": "Desativar tipo de transporte (ADMIN)",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/transportes/{{transporteId}}", "host": ["{{baseUrl}}"], "path": ["transportes", "{{transporteId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Recompensas",
+      "item": [
+        {
+          "name": "Listar recompensas disponíveis",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/recompensas", "host": ["{{baseUrl}}"], "path": ["recompensas"] }
+          }
+        },
+        {
+          "name": "Buscar recompensa por ID",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/recompensas/{{recompensaId}}", "host": ["{{baseUrl}}"], "path": ["recompensas", "{{recompensaId}}"] }
+          }
+        },
+        {
+          "name": "Criar recompensa (ADMIN)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.id) { pm.collectionVariables.set('recompensaId', json.id); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Voucher Bicicleta Compartilhada\",\n  \"descricao\": \"1 hora grátis em sistema de bike sharing.\",\n  \"pontosNecessarios\": 150,\n  \"quantidade\": 25\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/recompensas", "host": ["{{baseUrl}}"], "path": ["recompensas"] }
+          }
+        },
+        {
+          "name": "Resgatar recompensa com pontos",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/recompensas/usuario/{{userId}}/resgatar/{{recompensaId}}", "host": ["{{baseUrl}}"], "path": ["recompensas", "usuario", "{{userId}}", "resgatar", "{{recompensaId}}"] }
+          }
+        },
+        {
+          "name": "Desativar recompensa (ADMIN)",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/recompensas/{{recompensaId}}", "host": ["{{baseUrl}}"], "path": ["recompensas", "{{recompensaId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Validações (erros esperados)",
+      "item": [
+        {
+          "name": "Login com credenciais inválidas",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"invalido@email.com\",\n  \"senha\": \"errada\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Cadastrar usuário com email duplicado",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Outro Admin\",\n  \"email\": \"admin@mobilidade.com\",\n  \"senha\": \"123456\",\n  \"tipo\": \"PESSOA_FISICA\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/usuarios", "host": ["{{baseUrl}}"], "path": ["usuarios"] }
+          }
+        },
+        {
+          "name": "Acessar endpoint sem token (401)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/viagens/1", "host": ["{{baseUrl}}"], "path": ["viagens", "1"] }
+          }
+        },
+        {
+          "name": "Buscar usuário inexistente (404)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/usuarios/99999", "host": ["{{baseUrl}}"], "path": ["usuarios", "99999"] }
+          }
+        },
+        {
+          "name": "Viagem com distância inválida (400)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idTipoTransporte\": 1,\n  \"origem\": \"A\",\n  \"destino\": \"B\",\n  \"distanciaKm\": -5\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/viagens/usuario/{{userId}}", "host": ["{{baseUrl}}"], "path": ["viagens", "usuario", "{{userId}}"] }
+          }
+        }
+      ]
+    }
+  ]
+}

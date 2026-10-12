@@ -1,0 +1,66 @@
+# ==============================================================================
+# PRODUÇÃO
+# Porta 8080 (API). O banco NÃO publica porta para o host: só a aplicação
+# alcança o Oracle, pela rede interna do Compose.
+# Todos os segredos vêm do arquivo .env (veja .env.example) — nenhuma senha
+# fica escrita neste arquivo.
+# ==============================================================================
+
+name: mobilidade-prod
+
+services:
+
+  oracle-db:
+    image: gvenzl/oracle-xe:21-slim
+    container_name: mobilidade-oracle-prod
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_SYS_PASSWORD:?defina ORACLE_SYS_PASSWORD no .env}
+      APP_USER: ${ORACLE_USER:?defina ORACLE_USER no .env}
+      APP_USER_PASSWORD: ${ORACLE_PASSWORD:?defina ORACLE_PASSWORD no .env}
+    volumes:
+      - oracle-data-prod:/opt/oracle/oradata
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+    networks:
+      - mobilidade-prod-net
+    restart: unless-stopped
+
+  mobilidade-api:
+    image: ${IMAGE:-mobilidade-sustentavel:production}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mobilidade-api-prod
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      ORACLE_HOST: oracle-db
+      ORACLE_PORT: 1521
+      ORACLE_SERVICE: XEPDB1
+      ORACLE_USER: ${ORACLE_USER:?defina ORACLE_USER no .env}
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD:?defina ORACLE_PASSWORD no .env}
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
+      JAVA_OPTS: "-XX:MaxRAMPercentage=75"
+    depends_on:
+      oracle-db:
+        condition: service_healthy
+    networks:
+      - mobilidade-prod-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+volumes:
+  oracle-data-prod:
+    driver: local
+
+networks:
+  mobilidade-prod-net:
+    driver: bridge

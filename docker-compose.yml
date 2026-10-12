@@ -1,0 +1,63 @@
+# ================================================================
+# docker-compose.yml - Mobilidade Sustentável
+# Sobe o banco Oracle XE e a API Spring Boot juntos
+# ================================================================
+
+services:
+
+  # ---------------------------------------------------------------
+  # Banco de dados Oracle XE 21c
+  # ---------------------------------------------------------------
+  oracle-db:
+    image: gvenzl/oracle-xe:21-slim
+    container_name: mobilidade-oracle
+    environment:
+      ORACLE_PASSWORD: Oracle123        # senha do usuário SYS e SYSTEM
+      APP_USER: mobilidade              # cria o schema automaticamente
+      APP_USER_PASSWORD: mobilidade123
+    ports:
+      - "1521:1521"                     # porta TNS
+      - "5500:5500"                     # Oracle EM Express (opcional)
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 30s
+      timeout: 20s
+      retries: 10
+      start_period: 120s               # Oracle demora para iniciar
+    networks:
+      - mobilidade-net
+
+  # ---------------------------------------------------------------
+  # Aplicação Spring Boot
+  # ---------------------------------------------------------------
+  mobilidade-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mobilidade-api
+    ports:
+      - "8080:8080"
+    environment:
+      ORACLE_HOST: oracle-db
+      ORACLE_PORT: 1521
+      ORACLE_SERVICE: XEPDB1
+      ORACLE_USER: mobilidade
+      ORACLE_PASSWORD: mobilidade123
+      JWT_SECRET: mobilidade-sustentavel-secret-key-fiap-2024-muito-longa-para-seguranca
+      PORT: 8080
+    depends_on:
+      oracle-db:
+        condition: service_healthy
+    networks:
+      - mobilidade-net
+    restart: on-failure
+
+volumes:
+  oracle-data:
+    driver: local
+
+networks:
+  mobilidade-net:
+    driver: bridge

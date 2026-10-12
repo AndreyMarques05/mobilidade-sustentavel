@@ -1,0 +1,62 @@
+# ==============================================================================
+# STAGING — ambiente de homologação
+# Portas 8081 (API) e 1522 (banco) para poder subir lado a lado com produção
+# na mesma máquina. Rede e volume próprios: os dois ambientes são isolados.
+# ==============================================================================
+
+name: mobilidade-staging
+
+services:
+
+  oracle-db:
+    image: gvenzl/oracle-xe:21-slim
+    container_name: mobilidade-oracle-staging
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_SYS_PASSWORD:-Oracle123}
+      APP_USER: ${ORACLE_USER:-mobilidade}
+      APP_USER_PASSWORD: ${ORACLE_PASSWORD:-mobilidade123}
+    ports:
+      - "1522:1521"
+    volumes:
+      - oracle-data-staging:/opt/oracle/oradata
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+    networks:
+      - mobilidade-staging-net
+
+  mobilidade-api:
+    # Em deploy usamos a imagem publicada pelo pipeline; localmente, o build.
+    image: ${IMAGE:-mobilidade-sustentavel:staging}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mobilidade-api-staging
+    ports:
+      - "8081:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: staging
+      ORACLE_HOST: oracle-db
+      ORACLE_PORT: 1521
+      ORACLE_SERVICE: XEPDB1
+      ORACLE_USER: ${ORACLE_USER:-mobilidade}
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD:-mobilidade123}
+      JWT_SECRET: ${JWT_SECRET:-staging-secret-key-fiap-2026-com-mais-de-256-bits-para-hs256}
+      JAVA_OPTS: "-XX:MaxRAMPercentage=70"
+    depends_on:
+      oracle-db:
+        condition: service_healthy
+    networks:
+      - mobilidade-staging-net
+    restart: on-failure
+
+volumes:
+  oracle-data-staging:
+    driver: local
+
+networks:
+  mobilidade-staging-net:
+    driver: bridge

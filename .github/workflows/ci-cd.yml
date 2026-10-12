@@ -1,0 +1,358 @@
+name: CI/CD - Mobilidade Sustentável
+
+# ==============================================================================
+# Pipeline completo do ciclo de vida da aplicação:
+#
+#   build-test  ->  docker-image  ->  deploy-staging  ->  deploy-production
+#
+#   push em develop  : build + testes + imagem + deploy em STAGING
+#   push em main     : tudo acima + deploy em PRODUÇÃO (com aprovação manual)
+#   pull request     : apenas build + testes (nada é publicado nem implantado)
+# ==============================================================================
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  JAVA_VERSION: '17'
+
+jobs:
+
+  # ---------------------------------------------------------------------------
+  # 1. BUILD + TESTES AUTOMATIZADOS
+  # ---------------------------------------------------------------------------
+  build-test:
+    name: Build e testes automatizados
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: Compilar a aplicação
+        run: mvn -B clean compile
+
+      - name: Executar testes automatizados
+        run: mvn -B test
+
+      - name: Resumo dos testes
+        if: always()
+        run: |
+          echo "### Resultado dos testes" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '| Suíte | Testes | Falhas | Erros | Ignorados |' >> $GITHUB_STEP_SUMMARY
+          echo '|---|---|---|---|---|' >> $GITHUB_STEP_SUMMARY
+          for f in target/surefire-reports/TEST-*.xml; do
+            [ -e "$f" ] || continue
+            name=$(basename "$f" .xml | sed 's/^TEST-//')
+            tests=$(grep -o 'tests="[0-9]*"'      "$f" | head -1 | grep -o '[0-9]*')
+            fails=$(grep -o 'failures="[0-9]*"'   "$f" | head -1 | grep -o '[0-9]*')
+            errs=$(grep  -o 'errors="[0-9]*"'     "$f" | head -1 | grep -o '[0-9]*')
+            skip=$(grep  -o 'skipped="[0-9]*"'    "$f" | head -1 | grep -o '[0-9]*')
+            echo "| \`$name\` | $tests | $fails | $errs | $skip |" >> $GITHUB_STEP_SUMMARY
+          done
+
+      - name: Empacotar o JAR
+        run: mvn -B package -DskipTests
+
+      - name: Publicar relatórios de teste e cobertura
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorios-de-teste
+          path: |
+            target/surefire-reports/
+            target/site/jacoco/
+          retention-days: 14
+
+      - name: Publicar o artefato da aplicação
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobilidade-sustentavel-jar
+          path: target/mobilidade-sustentavel-1.0.0.jar
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # 2. BUILD E PUBLICAÇÃO DA IMAGEM DOCKER
+  # ---------------------------------------------------------------------------
+  docker-image:
+    name: Construir e publicar a imagem Docker
+    runs-on: ubuntu-latest
+    needs: build-test
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Autenticar no GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Definir as tags da imagem
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=staging,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=raw,value=production,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=,format=short
+
+      - name: Construir e enviar a imagem
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Resumo da imagem publicada
+        run: |
+          echo "### Imagem publicada" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  # ---------------------------------------------------------------------------
+  # 3. DEPLOY EM STAGING (homologação)
+  # ---------------------------------------------------------------------------
+  deploy-staging:
+    name: Deploy em staging
+    runs-on: ubuntu-latest
+    needs: docker-image
+    if: github.event_name != 'pull_request'
+    environment:
+      name: staging
+      url: http://localhost:8081
+    permissions:
+      contents: read
+      packages: read
+
+    # Banco de homologação subido como serviço do job
+    services:
+      oracle:
+        image: gvenzl/oracle-xe:21-slim
+        env:
+          ORACLE_PASSWORD: Oracle123
+          APP_USER: mobilidade
+          APP_USER_PASSWORD: mobilidade123
+        ports:
+          - 1521:1521
+        options: >-
+          --health-cmd healthcheck.sh
+          --health-interval 15s
+          --health-timeout 10s
+          --health-retries 30
+          --health-start-period 120s
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Autenticar no GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Baixar a imagem publicada
+        run: |
+          # O registry exige nome em minusculas; o usuario do GitHub pode ter maiusculas.
+          IMAGE_NAME_LC=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE=${{ env.REGISTRY }}/$IMAGE_NAME_LC:$(echo ${{ github.sha }} | cut -c1-7)
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+          docker pull "$IMAGE"
+
+      - name: Subir a aplicação no ambiente de staging
+        run: |
+          docker run -d --name mobilidade-api-staging \
+            --network host \
+            -e SPRING_PROFILES_ACTIVE=staging \
+            -e ORACLE_HOST=localhost \
+            -e ORACLE_PORT=1521 \
+            -e ORACLE_SERVICE=XEPDB1 \
+            -e ORACLE_USER=mobilidade \
+            -e ORACLE_PASSWORD=mobilidade123 \
+            -e JWT_SECRET='${{ secrets.JWT_SECRET_STAGING || 'staging-secret-key-fiap-2026-com-mais-de-256-bits-para-hs256' }}' \
+            -e PORT=8081 \
+            "$IMAGE"
+
+      - name: Aguardar a aplicação ficar saudável
+        run: |
+          echo "Aguardando /actuator/health responder UP..."
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8081/actuator/health | grep -q '"status":"UP"'; then
+              echo "Aplicação no ar após ${i} tentativas."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "A aplicação não ficou saudável a tempo. Logs do contêiner:"
+          docker logs mobilidade-api-staging
+          exit 1
+
+      - name: Smoke test do ambiente de staging
+        run: |
+          echo "### Smoke test — STAGING" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+
+          echo "--- GET /actuator/health ---"          | tee -a $GITHUB_STEP_SUMMARY
+          curl -s http://localhost:8081/actuator/health | tee -a $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "--- POST /auth/login (credencial inválida deve responder 401) ---" | tee -a $GITHUB_STEP_SUMMARY
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"nao-existe@fiap.com.br","senha":"errada"}' \
+            http://localhost:8081/auth/login)
+          echo "HTTP $code" | tee -a $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+          test "$code" = "401" -o "$code" = "403"
+
+      - name: Estado do contêiner em staging
+        if: always()
+        run: |
+          docker ps --filter name=mobilidade-api-staging \
+            --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
+          docker logs --tail 40 mobilidade-api-staging
+
+      - name: Derrubar o ambiente efêmero
+        if: always()
+        run: docker rm -f mobilidade-api-staging || true
+
+  # ---------------------------------------------------------------------------
+  # 4. DEPLOY EM PRODUÇÃO
+  #    Só roda a partir da main e depende de aprovação manual configurada
+  #    no GitHub em Settings > Environments > production.
+  # ---------------------------------------------------------------------------
+  deploy-production:
+    name: Deploy em produção
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    environment:
+      name: production
+      url: http://localhost:8080
+    permissions:
+      contents: read
+      packages: write   # promove a imagem para a tag production
+
+    services:
+      oracle:
+        image: gvenzl/oracle-xe:21-slim
+        env:
+          ORACLE_PASSWORD: Oracle123
+          APP_USER: mobilidade
+          APP_USER_PASSWORD: mobilidade123
+        ports:
+          - 1521:1521
+        options: >-
+          --health-cmd healthcheck.sh
+          --health-interval 15s
+          --health-timeout 10s
+          --health-retries 30
+          --health-start-period 120s
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Autenticar no GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Baixar a imagem aprovada em staging
+        run: |
+          IMAGE_NAME_LC=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE=${{ env.REGISTRY }}/$IMAGE_NAME_LC:$(echo ${{ github.sha }} | cut -c1-7)
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+          echo "IMAGE_NAME_LC=$IMAGE_NAME_LC" >> $GITHUB_ENV
+          docker pull "$IMAGE"
+
+      - name: Subir a aplicação no ambiente de produção
+        run: |
+          docker run -d --name mobilidade-api-prod \
+            --network host \
+            -e SPRING_PROFILES_ACTIVE=prod \
+            -e ORACLE_HOST=localhost \
+            -e ORACLE_PORT=1521 \
+            -e ORACLE_SERVICE=XEPDB1 \
+            -e ORACLE_USER=mobilidade \
+            -e ORACLE_PASSWORD=mobilidade123 \
+            -e JWT_SECRET='${{ secrets.JWT_SECRET_PROD || 'prod-secret-key-fiap-2026-com-mais-de-256-bits-para-hs256-ok' }}' \
+            -e PORT=8080 \
+            "$IMAGE"
+
+      - name: Aguardar a aplicação ficar saudável
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8080/actuator/health | grep -q '"status":"UP"'; then
+              echo "Produção no ar após ${i} tentativas."
+              exit 0
+            fi
+            sleep 5
+          done
+          docker logs mobilidade-api-prod
+          exit 1
+
+      - name: Smoke test do ambiente de produção
+        run: |
+          echo "### Smoke test — PRODUÇÃO" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          curl -s http://localhost:8080/actuator/health | tee -a $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "--- Swagger deve estar DESABILITADO em produção ---" | tee -a $GITHUB_STEP_SUMMARY
+          code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/swagger-ui.html)
+          echo "GET /swagger-ui.html -> HTTP $code" | tee -a $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Promover a imagem para a tag production
+        run: |
+          docker tag "$IMAGE" ${{ env.REGISTRY }}/$IMAGE_NAME_LC:production
+          docker push ${{ env.REGISTRY }}/$IMAGE_NAME_LC:production
+
+      - name: Estado do contêiner em produção
+        if: always()
+        run: |
+          docker ps --filter name=mobilidade-api-prod \
+            --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
+          docker logs --tail 40 mobilidade-api-prod
+
+      - name: Derrubar o ambiente efêmero
+        if: always()
+        run: docker rm -f mobilidade-api-prod || true

@@ -1,0 +1,19 @@
+# Mantém o contexto de build pequeno e evita vazar segredos para a imagem
+target/
+!target/*.jar
+.git/
+.github/
+.idea/
+*.iml
+.vscode/
+.env
+*.log
+docs/
+k8s/
+evidencias/
+README.md
+*.md
+docker-compose*.yml
+Dockerfile
+.dockerignore
+.gitignore
