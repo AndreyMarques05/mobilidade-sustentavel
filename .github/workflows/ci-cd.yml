@@ -114,15 +114,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # As tags production e latest NAO sao aplicadas aqui: so o job de
+      # producao as aplica, depois da aprovacao manual (promocao da imagem).
       - name: Definir as tags da imagem
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: |
+            latest=false
           tags: |
             type=raw,value=staging,enable=${{ github.ref == 'refs/heads/develop' }}
-            type=raw,value=production,enable=${{ github.ref == 'refs/heads/main' }}
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=sha,prefix=,format=short
 
       - name: Construir e enviar a imagem
@@ -351,8 +353,12 @@ jobs:
 
       - name: Promover a imagem para a tag production
         run: |
-          docker tag "$IMAGE" ${{ env.REGISTRY }}/$IMAGE_NAME_LC:production
-          docker push ${{ env.REGISTRY }}/$IMAGE_NAME_LC:production
+          for tag in production latest; do
+            docker tag "$IMAGE" ${{ env.REGISTRY }}/$IMAGE_NAME_LC:$tag
+            docker push ${{ env.REGISTRY }}/$IMAGE_NAME_LC:$tag
+          done
+          echo "### Imagem promovida para producao" >> $GITHUB_STEP_SUMMARY
+          echo "\`$IMAGE\` -> \`production\`, \`latest\`" >> $GITHUB_STEP_SUMMARY
 
       - name: Estado do contêiner em produção
         if: always()
