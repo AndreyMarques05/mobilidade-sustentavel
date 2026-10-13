@@ -346,6 +346,9 @@ jobs:
           echo "GET /swagger-ui.html -> HTTP $code" | tee -a $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
+          # Em producao a documentacao interativa nao pode estar exposta.
+          test "$code" = "404" || { echo "Swagger deveria estar desligado (404), veio HTTP $code"; exit 1; }
+
       - name: Promover a imagem para a tag production
         run: |
           docker tag "$IMAGE" ${{ env.REGISTRY }}/$IMAGE_NAME_LC:production
