@@ -14,6 +14,7 @@ Esta entrega aplica práticas completas de **DevOps** sobre esse projeto: pipeli
 - [Pipeline CI/CD](#pipeline-cicd)
 - [Containerização](#containerização)
 - [Prints do funcionamento](#prints-do-funcionamento)
+- [Desafios encontrados](#desafios-encontrados)
 - [Tecnologias utilizadas](#tecnologias-utilizadas)
 - [Checklist de entrega](#checklist-de-entrega)
 
@@ -155,13 +156,13 @@ GitHub Actions foi escolhido por três motivos práticos: já vive no mesmo luga
 Configura o JDK 17 com cache das dependências Maven, compila (`mvn clean compile`), executa a suíte de testes (`mvn test`) e empacota o JAR. Publica como artefatos os relatórios do Surefire, o relatório de cobertura do JaCoCo e o próprio JAR, e escreve uma tabela com o resultado de cada suíte no resumo da execução. Se qualquer teste falhar, o pipeline para aqui e nenhuma imagem é construída.
 
 **2. `docker-image` — build e publicação da imagem**
-Constrói a imagem com Buildx usando cache de camadas do próprio Actions (`type=gha`), o que derruba bastante o tempo dos builds seguintes, e envia para o GHCR. As tags são decididas pela branch: `staging` a partir de `develop`, `production` e `latest` a partir de `main`, e sempre uma tag com o SHA curto do commit — é essa tag imutável que os deploys usam, garantindo que staging e produção recebam exatamente o mesmo binário.
+Constrói a imagem com Buildx usando cache de camadas do próprio Actions (`type=gha`), o que derruba bastante o tempo dos builds seguintes, e envia para o GHCR. Toda imagem recebe uma tag com o SHA curto do commit — é essa tag imutável que os deploys usam, garantindo que staging e produção recebam exatamente o mesmo binário. Em `develop` ela também ganha a tag `staging`. As tags `production` e `latest` **não** são aplicadas aqui: só o job de produção as aplica, depois da aprovação.
 
 **3. `deploy-staging` — deploy em homologação**
-Sobe um Oracle XE como *service container* do job, baixa do GHCR a imagem daquele commit, inicia a aplicação com o perfil `staging`, aguarda o `/actuator/health` responder `UP` (até 5 minutos, com diagnóstico dos logs se estourar) e roda o smoke test: consulta o health check e confirma que uma tentativa de login com credencial inválida é rejeitada com 401/403 — ou seja, a camada de segurança subiu de fato.
+Sobe um Oracle XE como *service container* do job, baixa do GHCR a imagem daquele commit, inicia a aplicação com o perfil `staging`, aguarda o `/actuator/health` responder `UP` (até 5 minutos, com diagnóstico dos logs se estourar) e roda o smoke test: consulta o health check e confirma que uma tentativa de login com credencial inválida é rejeitada com um código 4xx (a API responde `422`) — ou seja, a autenticação subiu de fato. Uma resposta 2xx ou 5xx reprova o deploy.
 
 **4. `deploy-production` — deploy em produção**
-Só roda a partir da `main` e depende do ambiente `production` do GitHub, que exige aprovação manual. Repete o processo com o perfil `prod`, verifica o health check, confirma que o Swagger está desabilitado em produção e, no fim, promove a mesma imagem para a tag `:production` no GHCR.
+Só roda a partir da `main` e depende do ambiente `production` do GitHub, que exige aprovação manual. Repete o processo com o perfil `prod`, verifica o health check e exige que o Swagger responda `404` (documentação interativa exposta em produção reprova o deploy). Só então promove a mesma imagem para as tags `:production` e `:latest` no GHCR.
 
 ### Configuração necessária no GitHub
 
@@ -267,6 +268,51 @@ As evidências de execução estão na pasta [`evidencias/`](evidencias/) e tamb
 | 5 | Aprovação manual e deploy em **produção** | `evidencias/05-deploy-producao.png` |
 | 6 | Os dois ambientes rodando (`docker ps` + health checks) | `evidencias/06-ambientes-no-ar.png` |
 | 7 | Aplicação respondendo em staging (Swagger) e em produção | `evidencias/07-aplicacao-funcionando.png` |
+
+Repositório com o histórico de execuções: <https://github.com/AndreyMarques05/mobilidade-sustentavel/actions>
+
+### 1. Pipeline completo
+
+![Pipeline completo](evidencias/01-pipeline-completo.png)
+
+### 2. Testes automatizados (19 testes, 0 falhas)
+
+![Testes automatizados](evidencias/02-testes.png)
+
+### 3. Imagem publicada no GHCR
+
+![Imagem publicada](evidencias/03-imagem-publicada.png)
+
+### 4. Deploy e smoke test em staging
+
+![Deploy em staging](evidencias/04-deploy-staging.png)
+
+### 5. Aprovação manual e deploy em produção
+
+![Deploy em produção](evidencias/05-deploy-producao.png)
+
+### 6. Staging e produção no ar lado a lado
+
+![Ambientes no ar](evidencias/06-ambientes-no-ar.png)
+
+### 7. Aplicação funcionando
+
+![Aplicação funcionando](evidencias/07-aplicacao-funcionando.png)
+
+---
+
+## Desafios encontrados
+
+Problemas reais que apareceram ao colocar o pipeline para rodar, e como cada um foi resolvido:
+
+| Problema | Causa | Solução |
+|---|---|---|
+| `docker pull` falhava no deploy | O usuário do GitHub tem letras maiúsculas e o registry só aceita nomes de imagem em minúsculas | O nome da imagem é convertido para minúsculas antes do pull e do push |
+| Smoke test de staging reprovava com a aplicação saudável | O teste esperava `401/403` para login inválido, mas a API responde `422` (regra de negócio) | O teste passou a aceitar qualquer rejeição `4xx` e a reprovar `2xx`/`5xx` |
+| Swagger desligado em produção respondia `500` | A rota é pública na segurança; sem o Swagger, o Spring lança `NoResourceFoundException`, que caía no handler genérico | Handler específico devolvendo `404`, e o smoke test de produção passou a exigir esse `404` |
+| Tag `production` publicada antes da aprovação | As tags eram definidas no job de build, então a "promoção" pós-aprovação era só aparente | Build publica apenas a tag do commit; `production` e `latest` só são aplicadas pelo job de produção depois de aprovado |
+| Job de produção sem permissão para promover a imagem | O job tinha `packages: read` | Permissão `packages: write` apenas nesse job |
+| Portas 8080/8081 ocupadas na máquina local | Outros projetos rodando em contêiner | Portas de cada ambiente documentadas e isoladas; staging em 8081, produção em 8080 |
 
 ---
 
