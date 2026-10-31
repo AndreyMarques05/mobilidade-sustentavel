@@ -4,6 +4,8 @@ API RESTful que incentiva o uso de transportes sustentáveis em cidades intelige
 
 Esta entrega aplica práticas completas de **DevOps** sobre esse projeto: pipeline de CI/CD com build, testes e deploy automatizados, containerização com Docker e orquestração dos serviços em dois ambientes — **staging** e **produção**.
 
+Na Fase 7 o projeto ganhou uma suíte de **testes de API e BDD** (Cucumber, REST Assured e JSON Schema) na pasta [`api-tests/`](api-tests/README.md): 63 cenários em Gherkin que rodam contra a aplicação real, localmente ou no pipeline, logo depois do deploy em staging.
+
 **Integrante:** Francisco Andrey Leite Marques
 
 ---
@@ -11,6 +13,7 @@ Esta entrega aplica práticas completas de **DevOps** sobre esse projeto: pipeli
 ## Índice
 
 - [Como executar localmente com Docker](#como-executar-localmente-com-docker)
+- [Testes de API e BDD](#testes-de-api-e-bdd)
 - [Pipeline CI/CD](#pipeline-cicd)
 - [Containerização](#containerização)
 - [Prints do funcionamento](#prints-do-funcionamento)
@@ -122,6 +125,24 @@ mvn test
 
 ---
 
+## Testes de API e BDD
+
+A pasta [`api-tests/`](api-tests/README.md) é um projeto Maven separado que testa a API de fora, por HTTP, como um cliente faria:
+
+- **15 cenários de negócio** em Gherkin (português) para crédito de CO₂, pontos, resgate de recompensas e controle de acesso;
+- **48 cenários de API** cobrindo os 23 endpoints e o health check, com status code, corpo JSON e contrato validado por JSON Schema;
+- **2 cenários `@defeito-conhecido`** que reproduzem defeitos reais encontrados pela suíte e ficam fora da execução padrão.
+
+```bash
+cd api-tests
+./run-tests.sh            # Linux/macOS: sobe o staging, espera o health check e roda tudo
+.\run-tests.ps1           # Windows
+```
+
+Também roda por imagem Docker, sem Java nem Maven na máquina, e no pipeline, no job de staging. Instruções completas, cobertura por endpoint e achados no [README dos testes](api-tests/README.md).
+
+---
+
 ## Pipeline CI/CD
 
 O pipeline está em [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) e roda no **GitHub Actions**.
@@ -159,7 +180,7 @@ Configura o JDK 17 com cache das dependências Maven, compila (`mvn clean compil
 Constrói a imagem com Buildx usando cache de camadas do próprio Actions (`type=gha`), o que derruba bastante o tempo dos builds seguintes, e envia para o GHCR. Toda imagem recebe uma tag com o SHA curto do commit — é essa tag imutável que os deploys usam, garantindo que staging e produção recebam exatamente o mesmo binário. Em `develop` ela também ganha a tag `staging`. As tags `production` e `latest` **não** são aplicadas aqui: só o job de produção as aplica, depois da aprovação.
 
 **3. `deploy-staging` — deploy em homologação**
-Sobe um Oracle XE como *service container* do job, baixa do GHCR a imagem daquele commit, inicia a aplicação com o perfil `staging`, aguarda o `/actuator/health` responder `UP` (até 5 minutos, com diagnóstico dos logs se estourar) e roda o smoke test: consulta o health check e confirma que uma tentativa de login com credencial inválida é rejeitada com um código 4xx (a API responde `422`) — ou seja, a autenticação subiu de fato. Uma resposta 2xx ou 5xx reprova o deploy.
+Sobe um Oracle XE como *service container* do job, baixa do GHCR a imagem daquele commit, inicia a aplicação com o perfil `staging`, aguarda o `/actuator/health` responder `UP` (até 5 minutos, com diagnóstico dos logs se estourar) e roda o smoke test: consulta o health check e confirma que uma tentativa de login com credencial inválida é rejeitada com um código 4xx (a API responde `422`) — ou seja, a autenticação subiu de fato. Uma resposta 2xx ou 5xx reprova o deploy. Em seguida roda a suíte de [testes de API e BDD](#testes-de-api-e-bdd) contra essa mesma aplicação, escreve no resumo da execução uma tabela de cenários por funcionalidade e publica o relatório do Cucumber como artefato; um cenário falhando reprova o deploy.
 
 **4. `deploy-production` — deploy em produção**
 Só roda a partir da `main` e depende do ambiente `production` do GitHub, que exige aprovação manual. Repete o processo com o perfil `prod`, verifica o health check e exige que o Swagger responda `404` (documentação interativa exposta em produção reprova o deploy). Só então promove a mesma imagem para as tags `:production` e `:latest` no GHCR.
@@ -329,6 +350,7 @@ Problemas reais que apareceram ao colocar o pipeline para rodar, e como cada um 
 | Observabilidade | Spring Boot Actuator | Health checks usados pelo Docker e pelo pipeline |
 | Documentação da API | SpringDoc OpenAPI (Swagger UI) | Documentação interativa dos endpoints |
 | Testes | JUnit 5, Mockito, AssertJ | Testes unitários executados no pipeline |
+| Testes de API e BDD | Cucumber 7, REST Assured 5, JSON Schema Validator | Cenários em Gherkin e contratos rodando contra a API real (`api-tests/`) |
 | Cobertura | JaCoCo | Relatório de cobertura publicado como artefato |
 | Containerização | Docker (build multi-stage) | Empacotamento da aplicação |
 | Orquestração | Docker Compose v2 e Kubernetes | Aplicação + banco, com volumes, redes e variáveis |
@@ -357,6 +379,7 @@ Problemas reais que apareceram ao colocar o pipeline para rodar, e como cada um 
 ```
 mobilidade-sustentavel/
 ├── .github/workflows/ci-cd.yml      # Pipeline de CI/CD
+├── api-tests/                       # Testes de API e BDD (Cucumber + REST Assured + JSON Schema)
 ├── k8s/mobilidade.yaml              # Orquestração alternativa em Kubernetes
 ├── src/
 │   ├── main/java/...                # Código da aplicação
