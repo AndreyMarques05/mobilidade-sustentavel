@@ -5,8 +5,6 @@ import br.com.fiap.mobilidade.apitests.support.Contexto;
 import io.cucumber.java.After;
 import io.cucumber.java.Scenario;
 
-import java.nio.charset.StandardCharsets;
-
 /**
  * Ganchos executados ao final de cada cenário.
  */
@@ -32,8 +30,9 @@ public class Hooks {
             String evidencia = ctx.ultimaChamada()
                     + "\n\n-> HTTP " + r.statusCode()
                     + (corpo == null || corpo.isBlank() ? "" : "\n" + r.asPrettyString());
-            cenario.attach(evidencia.getBytes(StandardCharsets.UTF_8), "text/plain",
-                    "Última chamada à API");
+            // Anexo como texto (e não como bytes): o relatório HTML decodifica anexos
+            // binários sem UTF-8 e mostraria "HÃ­brido" no lugar de "Híbrido".
+            cenario.attach(evidencia, "text/plain", "Última chamada à API");
         });
     }
 
