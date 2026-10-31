@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "LoginResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["token", "tipo", "id", "nome", "email", "role"],
+  "properties": {
+    "token": {
+      "type": "string",
+      "description": "JWT: tres partes base64url separadas por ponto",
+      "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+    },
+    "tipo": { "enum": ["Bearer"] },
+    "id": { "type": "integer", "minimum": 1 },
+    "nome": { "type": "string", "minLength": 1 },
+    "email": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+$" },
+    "role": { "enum": ["USER", "ADMIN"] }
+  }
+}

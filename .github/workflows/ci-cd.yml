@@ -5,6 +5,9 @@ name: CI/CD - Mobilidade Sustentável
 #
 #   build-test  ->  docker-image  ->  deploy-staging  ->  deploy-production
 #
+#   deploy-staging sobe a aplicação real e roda contra ela a suíte de testes
+#   de API e BDD (api-tests/). Cenário falhando barra a ida para produção.
+#
 #   push em develop  : build + testes + imagem + deploy em STAGING
 #   push em main     : tudo acima + deploy em PRODUÇÃO (com aprovação manual)
 #   pull request     : apenas build + testes (nada é publicado nem implantado)
@@ -246,6 +249,56 @@ jobs:
             4??) echo "Login invalido rejeitado corretamente." ;;
             *)   echo "Resposta inesperada: HTTP $code"; exit 1 ;;
           esac
+
+      # -----------------------------------------------------------------------
+      # Testes de API e BDD (Cucumber + REST Assured + JSON Schema) rodando
+      # contra a aplicação real que acabou de subir em staging. Se algum
+      # cenário falhar, o job falha e a produção não é implantada.
+      # -----------------------------------------------------------------------
+      - name: Configurar JDK para os testes de API
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: Testes de API e BDD contra staging
+        env:
+          API_BASE_URL: http://localhost:8081
+        run: mvn -B -f api-tests/pom.xml test
+
+      - name: Resumo dos testes de API e BDD
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, os
+          caminho = 'api-tests/target/cucumber-report/cucumber.json'
+          resumo = open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8')
+          if not os.path.exists(caminho):
+              resumo.write('### Testes de API e BDD\n\nRelatório não gerado: a suíte não chegou a rodar.\n')
+              raise SystemExit(0)
+          dados = json.load(open(caminho, encoding='utf-8'))
+          resumo.write('### Testes de API e BDD contra staging\n\n')
+          resumo.write('| Funcionalidade | Cenários | Passaram | Falharam |\n|---|---|---|---|\n')
+          total = aprovados = 0
+          for funcionalidade in dados:
+              cenarios = [e for e in funcionalidade.get('elements', []) if e.get('type') == 'scenario']
+              ok = sum(1 for c in cenarios
+                       if all(p.get('result', {}).get('status') == 'passed' for p in c.get('steps', [])))
+              resumo.write(f"| {funcionalidade['name']} | {len(cenarios)} | {ok} | {len(cenarios) - ok} |\n")
+              total += len(cenarios)
+              aprovados += ok
+          resumo.write(f'\n**{aprovados} de {total} cenários aprovados.** '
+                       'Relatório completo no artefato `relatorio-bdd-staging`.\n')
+          PY
+
+      - name: Publicar relatório dos testes de API e BDD
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-bdd-staging
+          path: api-tests/target/cucumber-report/
+          retention-days: 14
 
       - name: Estado do contêiner em staging
         if: always()

@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "Lista de TransporteResponse (somente ativos)",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["id", "nome", "emissaoCo2PorKm", "pontosPorKm", "ativo"],
+    "properties": {
+      "id": { "type": "integer", "minimum": 1 },
+      "nome": { "type": "string", "minLength": 1, "maxLength": 100 },
+      "descricao": { "type": ["string", "null"], "maxLength": 500 },
+      "emissaoCo2PorKm": { "type": "number", "minimum": 0 },
+      "pontosPorKm": { "type": "integer", "minimum": 0 },
+      "ativo": { "type": "boolean", "enum": [true] }
+    }
+  }
+}

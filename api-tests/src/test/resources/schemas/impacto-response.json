@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "ImpactoResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["idUsuario", "nomeUsuario", "totalViagens", "distanciaTotalKm", "co2TotalEconomizadoKg",
+               "equivalenteArvoresPlantadas", "pontosAcumulados"],
+  "properties": {
+    "idUsuario": { "type": "integer", "minimum": 1 },
+    "nomeUsuario": { "type": "string", "minLength": 1 },
+    "totalViagens": { "type": "integer", "minimum": 0 },
+    "distanciaTotalKm": { "type": "number", "minimum": 0 },
+    "co2TotalEconomizadoKg": { "type": "number", "minimum": 0 },
+    "equivalenteArvoresPlantadas": { "type": "number", "minimum": 0 },
+    "pontosAcumulados": { "type": "integer", "minimum": 0 }
+  }
+}

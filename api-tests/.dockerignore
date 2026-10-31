@@ -1,0 +1,5 @@
+# Só o pom.xml e o src/ entram na imagem dos testes
+target/
+*.log
+.idea/
+*.iml

@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "Lista de RankingResponse",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["posicao", "idUsuario", "nomeUsuario", "tipoUsuario", "pontosRecompensa"],
+    "properties": {
+      "posicao": { "type": "integer", "minimum": 1 },
+      "idUsuario": { "type": "integer", "minimum": 1 },
+      "nomeUsuario": { "type": "string", "minLength": 1 },
+      "tipoUsuario": { "enum": ["PESSOA_FISICA", "EMPRESA"] },
+      "pontosRecompensa": { "type": "integer", "minimum": 0 }
+    }
+  }
+}

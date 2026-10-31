@@ -11,6 +11,7 @@ target/
 docs/
 k8s/
 evidencias/
+api-tests/
 README.md
 *.md
 docker-compose*.yml

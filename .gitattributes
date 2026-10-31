@@ -1,0 +1,3 @@
+# Scripts de shell sempre com LF, mesmo quando o repositorio e clonado no Windows
+# (com CRLF o bash falha em "$'\r': command not found")
+*.sh text eol=lf

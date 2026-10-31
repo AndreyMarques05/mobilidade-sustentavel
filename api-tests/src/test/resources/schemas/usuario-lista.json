@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "Lista de UsuarioResponse",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["id", "nome", "email", "tipo", "role", "pontosRecompensa", "dataCadastro", "ativo"],
+    "properties": {
+      "id": { "type": "integer", "minimum": 1 },
+      "nome": { "type": "string", "minLength": 2, "maxLength": 150 },
+      "email": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+$" },
+      "tipo": { "enum": ["PESSOA_FISICA", "EMPRESA"] },
+      "role": { "enum": ["USER", "ADMIN"] },
+      "pontosRecompensa": { "type": "integer", "minimum": 0 },
+      "dataCadastro": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}" },
+      "ativo": { "type": "boolean", "enum": [true] }
+    }
+  }
+}
