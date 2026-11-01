@@ -26,3 +26,6 @@ Thumbs.db
 *.log
 logs/
 tmp/
+
+# Relatorio gerado pelo docker run da suite de testes (ver api-tests/README.md)
+api-tests/relatorio/
